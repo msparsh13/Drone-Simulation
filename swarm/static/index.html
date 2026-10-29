@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swarm Formation Simulator</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--ink:#1c2330;--mute:#667085;--line:#e2e5ea;--accent:#2f5bea;--bad:#c2410c;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--panel:#1d2127;--ink:#e8eaee;--mute:#98a2b3;--line:#2c323b;--accent:#7b97ff;--bad:#fb923c;--ok:#4ade80}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);display:grid;grid-template-columns:320px 1fr;min-height:100vh}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow:auto;max-height:100vh;position:sticky;top:0}
+main{padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+h1{font-size:16px;margin:0 0 8px} h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:16px 0 4px}
+label{display:block;margin:7px 0 2px;color:var(--mute)} label b{float:right;color:var(--ink);font-weight:600}
+input[type=range],select,input[type=file]{width:100%}
+select,button,input[type=number]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+input[type=color]{padding:0;height:30px;width:44px}
+button{cursor:pointer} button:hover{border-color:var(--accent)} button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.hint{color:var(--mute);font-size:12px;margin:4px 0}
+#stages{margin:4px 0;padding-left:20px;max-height:140px;overflow:auto} #stages li{margin:3px 0} #stages button,ul#cues button{padding:0 6px;margin-left:6px}
+ul#cues{padding-left:18px;margin:4px 0;font-size:13px} ul#cues li{margin:2px 0}
+textarea{width:100%;font:12px monospace;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px}
+canvas{width:100%;max-width:760px;aspect-ratio:1;border:1px solid var(--line);border-radius:8px;align-self:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;max-width:760px;align-self:center;width:100%}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.stat span{display:block;color:var(--mute);font-size:12px} .stat strong{font-size:14px} .ok{color:var(--ok)} .bad{color:var(--bad)}
+.wide{max-width:760px;align-self:center;width:100%;font-size:13px}
+#msg{min-height:20px;color:var(--mute);text-align:center}
+@media(max-width:800px){body{grid-template-columns:1fr}aside{position:static;max-height:none}}
+</style></head><body>
+<aside>
+  <h1>Swarm Formation Simulator</h1>
+  <h2>Formations (played in order)</h2>
+  <ol id="stages"></ol>
+  <label>Add sample image</label>
+  <div class="row" style="margin-top:2px"><select id="sample" style="flex:1"></select><button id="addSample">Add</button></div>
+  <label>Add upload (PNG/JPG)</label><input type="file" id="file" accept=".png,.jpg,.jpeg">
+  <label>Threshold <b id="v_threshold"></b></label><input type="range" id="threshold" min="0" max="255" value="127">
+  <label><input type="checkbox" id="invert"> Light shape on dark background</label>
+
+  <h2>Video → drones</h2>
+  <label>Upload video (MP4/AVI/MOV/MKV/WEBM)</label><input type="file" id="video" accept=".mp4,.avi,.mov,.mkv,.webm">
+  <label>Keyframes <b id="v_vcount"></b></label><input type="range" id="vcount" min="2" max="12" value="6">
+  <label>Subject detection</label><select id="vmode"><option value="motion">Moving subject vs background (keeps colours)</option><option value="threshold">Dark shapes on light frames (threshold)</option></select>
+  <div class="row"><button id="vgo" class="primary">Convert video</button><button id="vdemo">Use demo video</button></div>
+  <div class="hint">Drones can't play video frame rates. The video is sampled into a few keyframes; each becomes a formation and the drones fly between them. Replaces the formation list.</div>
+
+  <h2>Swarm</h2>
+  <label>Drones <b id="v_n"></b></label><input type="range" id="n" min="50" max="2000" step="50" value="500">
+  <label>Arena width <b id="v_extent"></b></label><input type="range" id="extent" min="30" max="300" step="10" value="150">
+  <label>Formation scale <b id="v_scale"></b></label><input type="range" id="scale" min="0.3" max="1" step="0.05" value="1">
+  <label>Start layout (ignored when takeoff is on)</label><select id="init"><option value="random">Random scatter (airborne)</option><option value="grid">Grid</option></select>
+  <label>Assignment</label><select id="method">
+    <option value="hungarian_sq">Hungarian, squared distance (collision-safe)</option>
+    <option value="hungarian">Hungarian, min total distance</option>
+    <option value="greedy">Greedy nearest (baseline)</option></select>
+
+  <h2>Takeoff &amp; landing (horizontal plane)</h2>
+  <label><input type="checkbox" id="takeoff"> Takeoff from a ground grid (vertical climb in waves)</label>
+  <label><input type="checkbox" id="landing"> Land on a grid after the last formation</label>
+  <label>Base altitude (m)</label><input type="number" id="base_alt" value="30" min="5" style="width:100%">
+  <label>Climb speed <b id="v_climb"></b></label><input type="range" id="climb" min="0.5" max="5" step="0.5" value="2.5">
+  <label>Launch waves <b id="v_waves"></b></label><input type="range" id="waves" min="1" max="8" step="1" value="4">
+
+  <h2>Vehicle &amp; safety limits</h2>
+  <label>Min separation <b id="v_min_sep"></b></label><input type="range" id="min_sep" min="0.5" max="6" step="0.1" value="2.5">
+  <label>Max speed <b id="v_vmax"></b></label><input type="range" id="vmax" min="1" max="15" step="0.5" value="6">
+  <label>Max acceleration <b id="v_amax"></b></label><input type="range" id="amax" min="0.5" max="6" step="0.5" value="2">
+  <label>Positioning error (±) <b id="v_pos_error"></b></label><input type="range" id="pos_error" min="0" max="3" step="0.1" value="0.3">
+  <label><input type="checkbox" id="auto_time" checked> Auto-extend flight time to meet speed/accel limits</label>
+  <label><input type="checkbox" id="avoid" checked> Resolve conflicts (altitude layers, then timing)</label>
+
+  <h2>Playback</h2>
+  <label>Min flight time per transition <b id="v_dur"></b></label><input type="range" id="dur" min="1" max="60" step="1" value="10">
+  <label>Playback speed <b id="v_speed"></b></label><input type="range" id="speed" min="0.25" max="8" step="0.25" value="2">
+  <label>Motion profile</label><select id="ease"><option value="smooth">Smooth (min-jerk, zero accel at ends)</option><option value="cubic">Ease in-out</option><option value="out">Ease out</option><option value="linear">Linear</option></select>
+  <label><input type="checkbox" id="traj"> Show trajectories</label>
+  <div class="row"><button class="primary" id="play">Play</button><button id="pause">Pause</button><button id="restart">Restart</button><button id="reset">Reset</button></div>
+
+  <h2>Light show</h2>
+  <label>Drone colour</label>
+  <div class="row" style="margin-top:2px"><select id="colormode" style="flex:1"><option value="image">Image colours (same as the picture)</option><option value="white">Solid warm white</option><option value="custom">Solid custom</option></select><input type="color" id="solidcolor" value="#ffe9b0"></div>
+  <label>Minimum LED brightness <b id="v_minb"></b></label><input type="range" id="minb" min="0" max="150" step="5" value="70">
+  <div class="hint">LEDs can't show black, so very dark image colours are brightened to this level.</div>
+  <label>Hold time at each formation <b id="v_hold"></b></label><input type="range" id="hold" min="1" max="30" step="1" value="6">
+  <label><input type="checkbox" id="night" checked> Night-sky preview</label>
+  <label>Add light cue</label>
+  <div class="row" style="margin-top:2px">
+    <select id="c_effect"><option>blink</option><option>pulse</option><option>rainbow</option><option>wave</option><option>fade_in</option><option>fade_out</option><option>off</option><option>on</option><option>color</option></select>
+    <select id="c_when"><option value="hold">at formation (hold)</option><option value="flight">during flight to</option><option value="takeoff">during takeoff</option><option value="landing">during landing</option><option value="show">whole show</option></select>
+    <select id="c_stage"></select>
+  </div>
+  <div class="row" style="margin-top:2px">
+    <select id="c_scope"><option value="all">all drones</option><option>left</option><option>right</option><option>top</option><option>bottom</option><option>even</option><option>odd</option></select>
+    <select id="c_axis"><option value="x">axis x</option><option value="y">axis y</option><option value="id">axis id</option><option value="radial">axis radial</option></select>
+  </div>
+  <div class="row" style="margin-top:2px;align-items:center">
+    <span style="color:var(--mute)">period s</span><input type="number" id="c_period" value="1" min="0.05" step="0.1" style="width:64px">
+    <span style="color:var(--mute)">duty</span><input type="number" id="c_duty" value="0.5" min="0.05" max="1" step="0.05" style="width:60px">
+    <input type="checkbox" id="c_usecolor" title="Override colour"><input type="color" id="c_color" value="#ff2a2a">
+  </div>
+  <div class="row"><button id="c_add" class="primary">Add cue</button><button id="p_blink">Preset: blink at formations</button><button id="p_dark">Preset: dark flights</button><button id="p_rainbow">Preset: rainbow finale</button><button id="c_clear">Clear</button></div>
+  <ul id="cues"></ul>
+  <details><summary>Cues as JSON (custom animation)</summary><textarea id="cuejson" rows="7" spellcheck="false"></textarea><div class="row"><button id="c_apply">Apply JSON</button></div></details>
+
+  <h2>Export trajectories</h2>
+  <label>Formation plane</label><select id="plane"><option value="horizontal">Horizontal (seen from above)</option><option value="vertical">Vertical (audience view, no takeoff)</option></select>
+  <label>Max altitude (m)</label><input type="number" id="max_alt" value="120" min="1" style="width:100%">
+  <label>Battery endurance (min)</label><input type="number" id="endurance" value="15" min="1" style="width:100%">
+  <div class="row"><button id="export">Download trajectory package (.zip)</button></div>
+</aside>
+<main>
+  <canvas id="cv"></canvas>
+  <div id="msg"></div>
+  <div id="warn" class="wide"></div>
+  <div id="info" class="wide" style="color:var(--mute)"></div>
+  <div id="lwarn" class="wide" style="color:var(--bad)"></div>
+  <div class="stats" id="stats"></div>
+  <div class="wide" style="color:var(--mute);font-size:12px">Simulation-level checks only (separation, speed, acceleration, positioning error, altitude). Not a certified flight plan: wind, battery curves, GPS dropout and vehicle dynamics are not modelled. Triangle size shows altitude / layers. Read REPORT.md in the export.</div>
+</main>
+<script src="/static/lights.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const EASE={linear:x=>x,cubic:x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2,out:x=>1-Math.pow(1-x,3),smooth:x=>x*x*x*(10-15*x+6*x*x)};
+let stages=[{name:'heart.png',sample:'heart.png'}],cues=[],RC=[],P=null,off=[],Ttake=0,Tland=0,endShow=0,totalT=0,t=0,playing=false,lastTs=0,timer=null;
+const dur=()=>+$('dur').value, speed=()=>+$('speed').value, HOLD=()=>P?P.hold:5, clamp=x=>Math.max(0,Math.min(1,x));
+const nStages=()=>stages.length;
+
+function labels(){
+  const u=(id,s,d)=>$('v_'+id).textContent=(+$(id).value).toFixed(d||0)+s;
+  u('threshold',''); u('vcount',''); u('n',''); u('extent',' m'); u('scale','',2); u('min_sep',' m',1); u('vmax',' m/s',1);
+  u('amax',' m/s²',1); u('pos_error',' m',1); u('dur',' s'); u('speed','x',2); u('hold',' s'); u('minb',''); u('climb',' m/s',1); u('waves','');
+}
+function renderStages(){
+  $('stages').innerHTML=stages.map((s,i)=>`<li>${s.name}${stages.length>1?`<button data-i="${i}" title="Remove">x</button>`:''}</li>`).join('');
+  $('stages').querySelectorAll('button').forEach(b=>b.onclick=()=>{stages.splice(+b.dataset.i,1);renderStages();scheduleBuild();});
+  refreshCues();
+}
+function scheduleBuild(){labels();clearTimeout(timer);timer=setTimeout(build,300);}
+
+// ---- light cues -----------------------------------------------------------
+function hex2rgb(v){return [1,3,5].map(i=>parseInt(v.slice(i,i+2),16));}
+function solidColor(){const m=$('colormode').value; if(m==='image')return null; return m==='white'?[255,244,214]:hex2rgb($('solidcolor').value);}
+function cueText(c){
+  const an=c.anchor||{type:'show'};
+  const w=an.type==='show'?'whole show':an.type==='abs'?`${an.t0}-${an.t1}s`:['takeoff','landing'].includes(an.type)?an.type:`${an.type} ${(an.stage|0)+1}`;
+  const p=['blink','pulse','rainbow','wave'].includes(c.effect)?` · ${c.period||1}s`:'';
+  return `${c.effect} · ${w} · ${c.scope||'all'}${p}${c.color?' · custom colour':''}`;
+}
+function refreshCues(){
+  $('cues').innerHTML=cues.map((c,i)=>`<li>${cueText(c)}<button data-i="${i}" title="Remove">x</button></li>`).join('')||'<li style="list-style:none;color:var(--mute)">No cues: drones show their base colour.</li>';
+  $('cues').querySelectorAll('button').forEach(b=>b.onclick=()=>{cues.splice(+b.dataset.i,1);refreshCues();});
+  $('cuejson').value=JSON.stringify(cues,null,1);
+  $('c_stage').innerHTML=Array.from({length:nStages()},(_,i)=>`<option value="${i}">formation ${i+1}</option>`).join('');
+  if(P){RC=Lights.resolve(cues,P.segments,P.hold,Ttake,Tland);
+    const m=Lights.check(cues).concat(RC.skipped.length?[`${RC.skipped.length} cue(s) skipped (missing formation or unknown effect).`]:[]);
+    $('lwarn').innerHTML=m.map(x=>`<div>⚠ ${x}</div>`).join('');}
+}
+function cueFromForm(){
+  const when=$('c_when').value,c={effect:$('c_effect').value,scope:$('c_scope').value,axis:$('c_axis').value,period:+$('c_period').value,
+    duty:+$('c_duty').value,anchor:['hold','flight'].includes(when)?{type:when,stage:+$('c_stage').value}:{type:when}};
+  if($('c_usecolor').checked)c.color=hex2rgb($('c_color').value); return c;
+}
+
+// ---- planning ------------------------------------------------------------
+function bodyFromUI(){
+  return {stages:stages.map(s=>s.sample?{sample:s.sample}:{data:s.data}),n:+$('n').value,threshold:+$('threshold').value,
+    invert:$('invert').checked,scale:+$('scale').value,init:$('init').value,method:$('method').value,extent:+$('extent').value,
+    min_sep:+$('min_sep').value,vmax:+$('vmax').value,amax:+$('amax').value,pos_error:+$('pos_error').value,
+    avoid:$('avoid').checked,auto_time:$('auto_time').checked,flight_time:dur(),easing:$('ease').value,
+    takeoff:$('takeoff').checked,landing:$('landing').checked,base_alt:+$('base_alt').value,climb_speed:+$('climb').value,waves:+$('waves').value,
+    plane:$('plane').value,max_alt:+$('max_alt').value,endurance_min:+$('endurance').value,rate_hz:5,
+    hold:+$('hold').value,solid_color:solidColor(),min_brightness:+$('minb').value,cues:cues,light_rate_hz:20};
+}
+async function build(){
+  $('msg').textContent='Planning transitions...';
+  try{
+    const r=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyFromUI())});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error);
+    P=j; Ttake=P.takeoff?P.takeoff.duration:0; Tland=P.landing?P.landing.duration:0;
+    off=[]; let a=Ttake; P.segments.forEach(s=>{off.push(a); a+=s.total+HOLD();}); endShow=a; totalT=a+Tland;
+    t=0; playing=true; lastTs=performance.now(); $('msg').textContent='';
+    refreshCues();
+    const bad=P.segments.some(s=>s.warnings.length);
+    $('warn').innerHTML=`<div class="${bad?'bad':'ok'}"><b>${bad?'Simulation checks: FAILED':'Simulation checks: PASSED'}</b> (${(totalT/60).toFixed(1)} min total)</div>`+
+      P.segments.flatMap((s,i)=>s.warnings.map(w=>`Transition ${i+1}: ${w}`)).map(w=>`<div class="bad">⚠ ${w}</div>`).join('');
+    $('info').innerHTML=P.notes.map(n=>`<div>ℹ ${n}</div>`).join('');
+  }catch(e){$('msg').textContent='Error: '+e.message;}
+}
+async function doExport(){
+  $('msg').textContent='Building trajectory package...';
+  try{
+    const r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bodyFromUI())});
+    if(!r.ok) throw new Error((await r.json()).error);
+    const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');
+    a.href=url; a.download='swarm_trajectories.zip'; a.click(); URL.revokeObjectURL(url); $('msg').textContent='Downloaded. Read REPORT.md before using anything.';
+  }catch(e){$('msg').textContent='Export error: '+e.message;}
+}
+async function convertVideo(file){
+  $('msg').textContent='Reading video...';
+  const q=new URLSearchParams({count:$('vcount').value,mode:$('vmode').value,name:file?file.name:'demo video'});
+  if(file){q.set('ext','.'+file.name.split('.').pop().toLowerCase());} else q.set('sample','video_demo.avi');
+  try{
+    const r=await fetch('/api/video?'+q,{method:'POST',body:file||null}); const j=await r.json(); if(!r.ok) throw new Error(j.error);
+    stages=j.frames.map(f=>({name:f.name,data:f.png})); renderStages(); build();
+    $('msg').textContent=`Video: ${j.duration.toFixed(1)} s, ${j.frames.length} keyframes -> formations`;
+  }catch(e){$('msg').textContent='Video error: '+e.message;}
+}
+
+// ---- timeline ------------------------------------------------------------
+function locate(){
+  if(t<Ttake) return {phase:'takeoff',k:0,lt:t};
+  if(Tland>0&&t>=endShow) return {phase:'landing',k:P.segments.length-1,lt:t-endShow};
+  for(let k=P.segments.length-1;k>=0;k--) if(t>=off[k]) return {phase:'show',k,lt:t-off[k]};
+  return {phase:'show',k:0,lt:0};
+}
+function stats(){
+  if(!P) return; const L=locate(), s=P.segments[L.k], m=s.metrics, f=(x,d=1)=>x==null?'n/a':x.toFixed(d);
+  const coll=m.collisions_planned==0?`<strong class="ok">${m.collisions_naive} → 0</strong>`:`<strong class="bad">${m.collisions_naive} → ${m.collisions_planned}</strong>`;
+  const sep=m.min_sep_planned==null?'off':`${f(m.min_sep_planned,2)} m (need ${f(P.min_sep,1)})`;
+  const items=[['Phase',L.phase],['Drones',m.particles],['Transition',`${L.k+1} / ${P.segments.length}${s.kind==='landing_grid'?' (landing grid)':''}`],
+    ['Assignment',`${m.method} · ${f(m.assign_ms)} ms`],['Total travel',`${f(m.travel_total,0)} m`],['Mean / max travel',`${f(m.travel_mean)} / ${f(m.travel_max)} m`],
+    ['Collision pairs (naive → planned)',coll],['Closest approach',sep],['Worst-case clearance (±error)',m.clearance==null?'n/a':f(m.clearance,2)+' m'],
+    ['Peak speed / accel',`${f(m.peak_speed)} m/s / ${m.peak_accel==null?'impulsive':f(m.peak_accel)+' m/s²'}`],
+    ['Flight time used',`${f(m.flight_time,0)} s${m.total_time>m.flight_time+.01?' (+'+f(m.total_time-m.flight_time,0)+' stagger)':''}`],
+    ['Altitude layers used',m.layers_used],['Show time',`${t.toFixed(0)} / ${totalT.toFixed(0)} s`]];
+  $('stats').innerHTML=items.map(([a,b])=>`<div class="stat"><span>${a}</span>${String(b).startsWith('<strong')?b:`<strong>${b}</strong>`}</div>`).join('');
+}
+function draw(){
+  const c=$('cv'),dpr=devicePixelRatio||1,w=c.clientWidth;
+  if(c.width!==Math.round(w*dpr)) c.width=c.height=Math.round(w*dpr);
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); const night=$('night').checked;
+  g.fillStyle=night?'#0a0f1e':'#fff'; g.fillRect(0,0,w,w);
+  if(!P) return;
+  const k=w/(P.extent*1.15),o=w/2,L=locate(),S=P.segments[L.k],E=EASE[$('ease').value],segs=P.segments;
+  g.setLineDash([4,4]); g.strokeStyle=night?'#2a3350':'#cfd4dc'; g.strokeRect(o-P.extent/2*k,o-P.extent/2*k,P.extent*k,P.extent*k); g.setLineDash([]);
+  if($('traj').checked&&L.phase==='show'){
+    g.strokeStyle=night?'rgba(150,160,190,.3)':'rgba(110,120,140,.28)'; g.beginPath();
+    for(let i=0;i<P.n;i++){g.moveTo(o+S.start[i][0]*k,o-S.start[i][1]*k);g.lineTo(o+S.target[i][0]*k,o-S.target[i][1]*k);}
+    g.stroke();
+  }
+  const prev=L.k>0?segs[L.k-1].color:null, r0=Math.max(P.tri*k,2.5);
+  for(let i=0;i<P.n;i++){
+    let wx,wy,c0,c1,p=1,sc=1;
+    if(L.phase==='takeoff'){const e=EASE.smooth(clamp((L.lt-P.takeoff.delay[i])/P.takeoff.climb_time)); wx=segs[0].start[i][0]; wy=segs[0].start[i][1]; c0=c1=P.start_color; sc=.45+.55*e;}
+    else if(L.phase==='landing'){const e=EASE.smooth(clamp((L.lt-P.landing.delay[i])/P.landing.climb_time)); const sg=segs[segs.length-1]; wx=sg.target[i][0]; wy=sg.target[i][1]; c0=c1=sg.color[i]; sc=1-.55*e;}
+    else{
+      const raw=clamp((L.lt-S.delay[i])/S.flight); p=E(raw); const a=S.start[i],b=S.target[i];
+      wx=a[0]+(b[0]-a[0])*p; wy=a[1]+(b[1]-a[1])*p; c0=prev?prev[i]:P.start_color; c1=S.color[i];
+      sc=1+S.lift[i]*Math.pow(Math.sin(Math.PI*raw),2)*.06;
+    }
+    let col=[c0[0]+(c1[0]-c0[0])*p,c0[1]+(c1[1]-c0[1])*p,c0[2]+(c1[2]-c0[2])*p];
+    if(RC.length) col=Lights.color(col,i,P.n,wx,wy,t,RC,P.extent);
+    const x=o+wx*k,y=o-wy*k,r=r0*sc;
+    g.fillStyle=`rgb(${col[0]|0},${col[1]|0},${col[2]|0})`;
+    g.beginPath(); g.moveTo(x,y-r); g.lineTo(x-.866*r,y+.5*r); g.lineTo(x+.866*r,y+.5*r); g.closePath(); g.fill();
+  }
+}
+function frame(ts){
+  if(playing&&P){t+=(ts-lastTs)/1000*speed(); if(t>=totalT){t=totalT-1e-6;playing=false;}}
+  lastTs=ts; draw(); stats(); requestAnimationFrame(frame);
+}
+
+// ---- wiring --------------------------------------------------------------
+$('play').onclick=()=>{if(!P)return; if(t>=totalT-1e-3)t=0; playing=true; lastTs=performance.now();};
+$('pause').onclick=()=>{playing=false;};
+$('restart').onclick=()=>{t=0;playing=true;lastTs=performance.now();};
+$('reset').onclick=()=>{t=0;playing=false;};
+['threshold','n','extent','scale','init','method','invert','min_sep','vmax','amax','pos_error','auto_time','avoid','dur','ease',
+ 'colormode','solidcolor','hold','minb','takeoff','landing','base_alt','climb','waves'].forEach(id=>$(id).addEventListener('input',scheduleBuild));
+$('speed').addEventListener('input',labels); $('vcount').addEventListener('input',labels);
+$('export').onclick=doExport;
+$('addSample').onclick=()=>{stages.push({name:$('sample').value,sample:$('sample').value});renderStages();scheduleBuild();};
+$('file').onchange=()=>{const f=$('file').files[0]; if(!f)return; const fr=new FileReader();
+  fr.onload=()=>{stages.push({name:f.name,data:fr.result.split(',')[1]});$('file').value='';renderStages();scheduleBuild();}; fr.readAsDataURL(f);};
+$('vgo').onclick=()=>{const f=$('video').files[0]; if(!f){$('msg').textContent='Choose a video file first (or use the demo video).';return;} convertVideo(f);};
+$('vdemo').onclick=()=>convertVideo(null);
+$('c_add').onclick=()=>{cues.push(cueFromForm());refreshCues();};
+$('c_clear').onclick=()=>{cues=[];refreshCues();};
+const SK=()=>Array.from({length:nStages()},(_,k)=>k);
+$('p_blink').onclick=()=>{cues=SK().map(k=>({effect:'blink',anchor:{type:'hold',stage:k},scope:'all',period:1,duty:.5}));refreshCues();};
+$('p_dark').onclick=()=>{cues=SK().map(k=>({effect:'off',anchor:{type:'flight',stage:k},scope:'all'}));refreshCues();};
+$('p_rainbow').onclick=()=>{cues=[{effect:'rainbow',anchor:{type:'hold',stage:nStages()-1},scope:'all',axis:'x',period:4}];refreshCues();};
+$('c_apply').onclick=()=>{try{const j=JSON.parse($('cuejson').value);if(!Array.isArray(j))throw new Error('must be a JSON array');cues=j;refreshCues();$('msg').textContent='';}catch(e){$('msg').textContent='Cue JSON error: '+e.message;}};
+(async()=>{
+  const names=await (await fetch('/api/samples')).json();
+  $('sample').innerHTML=names.map(n=>`<option>${n}</option>`).join('');
+  const want=['heart.png','star_gold.png','crown.png'].filter(n=>names.includes(n));
+  if(want.length) stages=want.map(n=>({name:n,sample:n}));
+  renderStages(); labels(); build(); requestAnimationFrame(frame);
+})();
+</script></body></html>
