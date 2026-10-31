@@ -1,4 +1,5 @@
 """Particle -> target assignment. perm[i] = index of the target given to particle i."""
+
 from __future__ import annotations
 import numpy as np
 from scipy.optimize import linear_sum_assignment

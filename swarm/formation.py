@@ -12,6 +12,7 @@ class Formation:
     ids:       (N,)   stable particle/target IDs.
     meta:      pixel->world transform info (scale, image width/height).
     """
+
     positions: np.ndarray
     colors: np.ndarray
     ids: np.ndarray

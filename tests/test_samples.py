@@ -1,4 +1,5 @@
 import glob, os, sys, unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from swarm.cli import build_formation
 from swarm.sampling import evaluate_formation
@@ -15,8 +16,10 @@ class TestAllSamples(unittest.TestCase):
                 mask, form = build_formation(f, n=300)
                 m = evaluate_formation(form, mask)
                 self.assertEqual(len(form), 300)
-                self.assertGreater(m["min_spacing"], 0.3 * m["mean_spacing"])   # no clumping
-                self.assertLess(m["coverage_max"], 3.0 * m["mean_spacing"])     # no holes
+                self.assertGreater(
+                    m["min_spacing"], 0.3 * m["mean_spacing"]
+                )  # no clumping
+                self.assertLess(m["coverage_max"], 3.0 * m["mean_spacing"])  # no holes
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ from swarm.cli import build_formation
 
 def rect_img(w, h, pad=10):
     img = np.full((h + 2 * pad, w + 2 * pad, 3), 255, np.uint8)
-    img[pad:pad + h, pad:pad + w] = 0
+    img[pad : pad + h, pad : pad + w] = 0
     return img
 
 
@@ -20,13 +20,16 @@ class TestImaging(unittest.TestCase):
         self.assertEqual(extract_mask(rect_img(60, 40)).sum(), 60 * 40)
 
     def test_invert(self):
-        self.assertEqual(extract_mask(255 - rect_img(60, 40), invert=True).sum(), 60 * 40)
+        self.assertEqual(
+            extract_mask(255 - rect_img(60, 40), invert=True).sum(), 60 * 40
+        )
 
     def test_alpha_used_when_transparent(self):
         rgba = np.zeros((50, 50, 4), np.uint8)
         rgba[10:30, 10:30] = (0, 0, 255, 255)
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "t.png"); cv2.imwrite(p, rgba)
+            p = os.path.join(d, "t.png")
+            cv2.imwrite(p, rgba)
             bgr, a = load_image(p)
         self.assertEqual(extract_mask(bgr, a).sum(), 400)
 
@@ -64,7 +67,7 @@ class TestSampling(unittest.TestCase):
     def test_even_spacing_and_coverage(self):
         m = evaluate_formation(sample_targets(self.mask, 400, self.bgr), self.mask)
         self.assertGreater(m["min_spacing"], 0.5 * m["mean_spacing"])  # no clumps
-        self.assertLess(m["coverage_max"], 2.5 * m["mean_spacing"])    # no holes
+        self.assertLess(m["coverage_max"], 2.5 * m["mean_spacing"])  # no holes
 
     def test_lloyd_beats_random(self):
         r = evaluate_formation(sample_targets(self.mask, 300, iterations=0), self.mask)
@@ -83,16 +86,22 @@ class TestSampling(unittest.TestCase):
 
     def test_colors_follow_image(self):
         bgr = np.zeros((40, 80, 3), np.uint8)
-        bgr[:, :40] = (0, 0, 255); bgr[:, 40:] = (255, 0, 0)
+        bgr[:, :40] = (0, 0, 255)
+        bgr[:, 40:] = (255, 0, 0)
         f = sample_targets(np.ones((40, 80), bool), 200, bgr)
-        self.assertTrue((f.colors[f.positions[:, 0] < -5][:, 0] > 200).all())  # red (RGB) left
-        self.assertTrue((f.colors[f.positions[:, 0] > 5][:, 2] > 200).all())   # blue right
+        self.assertTrue(
+            (f.colors[f.positions[:, 0] < -5][:, 0] > 200).all()
+        )  # red (RGB) left
+        self.assertTrue(
+            (f.colors[f.positions[:, 0] > 5][:, 2] > 200).all()
+        )  # blue right
 
 
 class TestPipeline(unittest.TestCase):
     def test_end_to_end_and_render(self):
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "a.png"); cv2.imwrite(p, rect_img(120, 80))
+            p = os.path.join(d, "a.png")
+            cv2.imwrite(p, rect_img(120, 80))
             mask, f = build_formation(p, n=200)
         img = render_formation(f, size=400)
         self.assertEqual(img.shape, (400, 400, 3))

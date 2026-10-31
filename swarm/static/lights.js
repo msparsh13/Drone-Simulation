@@ -1,4 +1,4 @@
-// Light-show cue engine. Mirrors swarm/lights.py (parity checked by tests/test_lights_parity.py).
+// Light-show cue engine (3D). Mirrors swarm/lights.py (parity checked by tests/test_lights.py).
 const Lights=(()=>{
   const EFFECTS=['on','off','color','blink','pulse','rainbow','wave','fade_in','fade_out'];
   const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
@@ -31,29 +31,31 @@ const Lights=(()=>{
     const t=[[1,f,0],[q,1,0],[0,1,f],[0,q,1],[f,0,1],[1,0,q]][i];
     return [t[0]*255,t[1]*255,t[2]*255];
   }
-  function axisPos(axis,i,n,x,y,extent){
+  function axisPos(axis,i,n,x,y,z,extent,zr){
     if(axis==='y')return clamp(y/extent+.5);
+    if(axis==='z')return clamp((z-zr[0])/Math.max(zr[1]-zr[0],1e-9));
     if(axis==='id')return i/Math.max(n-1,1);
     if(axis==='radial')return clamp(Math.hypot(x,y)/(extent/2));
     return clamp(x/extent+.5);
   }
-  function inScope(s,i,x,y){
-    switch(s){case 'left':return x<0;case 'right':return x>=0;case 'top':return y>0;case 'bottom':return y<=0;
-      case 'even':return i%2===0;case 'odd':return i%2===1;default:return true;}
+  function inScope(s,i,x,y,z,zr){
+    const zm=(zr[0]+zr[1])/2;
+    switch(s){case 'left':return x<0;case 'right':return x>=0;case 'front':return y<0;case 'back':return y>=0;
+      case 'top':return z>zm;case 'bottom':return z<=zm;case 'even':return i%2===0;case 'odd':return i%2===1;default:return true;}
   }
-  // base: [r,g,b] 0-255; returns [r,g,b]
-  function color(base,i,n,x,y,t,rc,extent){
+  // base [r,g,b]; zr=[zmin,zmax] of the whole swarm at this instant; returns [r,g,b]
+  function color(base,i,n,x,y,z,t,rc,extent,zr){
     let out=base;
     for(const c of rc){
-      if(t<c.t0||t>=c.t1||!inScope(c.scope||'all',i,x,y))continue;
+      if(t<c.t0||t>=c.t1||!inScope(c.scope||'all',i,x,y,z,zr))continue;
       const src=c.color||base,per=Math.max(+c.period||1,1e-3),ph=t-c.t0;let col=src,f=1;
       switch(c.effect){
         case 'off':col=[0,0,0];break;
         case 'on':case 'color':col=src;break;
         case 'blink':f=((ph/per)%1)<(c.duty==null?.5:+c.duty)?1:0;break;
         case 'pulse':f=.5-.5*Math.cos(2*Math.PI*ph/per);break;
-        case 'rainbow':col=hsv(axisPos(c.axis||'x',i,n,x,y,extent)-ph/per);break;
-        case 'wave':f=.5+.5*Math.cos(2*Math.PI*(axisPos(c.axis||'x',i,n,x,y,extent)-ph/per));break;
+        case 'rainbow':col=hsv(axisPos(c.axis||'x',i,n,x,y,z,extent,zr)-ph/per);break;
+        case 'wave':f=.5+.5*Math.cos(2*Math.PI*(axisPos(c.axis||'x',i,n,x,y,z,extent,zr)-ph/per));break;
         case 'fade_in':f=clamp(ph/Math.max(c.t1-c.t0,1e-9));break;
         case 'fade_out':f=1-clamp(ph/Math.max(c.t1-c.t0,1e-9));break;
       }

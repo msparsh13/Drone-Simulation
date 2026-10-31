@@ -1,4 +1,5 @@
 """Image loading and foreground-mask extraction (OpenCV)."""
+
 from __future__ import annotations
 import cv2
 import numpy as np
@@ -43,8 +44,9 @@ def resize_keep_aspect(arr: np.ndarray, max_side: int) -> np.ndarray:
     return cv2.resize(arr, size, interpolation=cv2.INTER_AREA)
 
 
-def extract_mask(bgr, alpha=None, threshold: int = 127, invert: bool = False,
-                 denoise: bool = True) -> np.ndarray:
+def extract_mask(
+    bgr, alpha=None, threshold: int = 127, invert: bool = False, denoise: bool = True
+) -> np.ndarray:
     """Boolean foreground mask.
 
     - If the image has real transparency, foreground = alpha > 127.

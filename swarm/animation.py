@@ -1,12 +1,15 @@
 """Linear-path animation math (mirrored in static/index.html)."""
+
 from __future__ import annotations
 import numpy as np
 
 EASINGS = {
     "linear": lambda x: x,
-    "cubic": lambda x: np.where(x < 0.5, 4 * x ** 3, 1 - (-2 * x + 2) ** 3 / 2),
+    "cubic": lambda x: np.where(x < 0.5, 4 * x**3, 1 - (-2 * x + 2) ** 3 / 2),
     "out": lambda x: 1 - (1 - x) ** 3,
-    "smooth": lambda x: x ** 3 * (10 - 15 * x + 6 * x ** 2),  # min-jerk: zero v and a at both ends
+    "smooth": lambda x: (
+        x**3 * (10 - 15 * x + 6 * x**2)
+    ),  # min-jerk: zero v and a at both ends
 }
 
 

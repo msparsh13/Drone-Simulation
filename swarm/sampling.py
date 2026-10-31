@@ -1,13 +1,21 @@
 """Mask -> evenly distributed target positions via Lloyd relaxation."""
+
 from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 from .formation import Formation
 
 
-def sample_targets(mask: np.ndarray, n: int, bgr: np.ndarray | None = None, *,
-                   extent: float = 100.0, scale: float = 1.0,
-                   iterations: int = 30, seed: int = 0) -> Formation:
+def sample_targets(
+    mask: np.ndarray,
+    n: int,
+    bgr: np.ndarray | None = None,
+    *,
+    extent: float = 100.0,
+    scale: float = 1.0,
+    iterations: int = 30,
+    seed: int = 0,
+) -> Formation:
     """Place n targets inside the mask with near-uniform spacing.
 
     Seeds start at random foreground pixels, then Lloyd iterations move each
@@ -22,7 +30,9 @@ def sample_targets(mask: np.ndarray, n: int, bgr: np.ndarray | None = None, *,
         raise ValueError("n must be positive")
     ys, xs = np.nonzero(mask)
     if len(xs) < n:
-        raise ValueError(f"Requested {n} particles but mask has only {len(xs)} foreground pixels.")
+        raise ValueError(
+            f"Requested {n} particles but mask has only {len(xs)} foreground pixels."
+        )
     pix = np.column_stack([xs, ys]).astype(float) + 0.5
     rng = np.random.default_rng(seed)
     seeds = pix[rng.choice(len(pix), n, replace=False)]
@@ -47,8 +57,12 @@ def sample_targets(mask: np.ndarray, n: int, bgr: np.ndarray | None = None, *,
     h, w = mask.shape
     s = extent * scale / max(h, w)
     pos = np.column_stack([(seeds[:, 0] - w / 2) * s, (h / 2 - seeds[:, 1]) * s])
-    return Formation(pos, colors, np.arange(n),
-                     meta=dict(world_scale=s, width=w, height=h, extent=extent, scale=scale))
+    return Formation(
+        pos,
+        colors,
+        np.arange(n),
+        meta=dict(world_scale=s, width=w, height=h, extent=extent, scale=scale),
+    )
 
 
 def to_world(formation: Formation, mask: np.ndarray) -> np.ndarray:
@@ -75,5 +89,10 @@ def evaluate_formation(formation: Formation, mask: np.ndarray) -> dict:
     fg = to_world(formation, mask)
     d, _ = cKDTree(formation.positions).query(fg)
     nn = nn_distances(formation.positions) if len(formation) > 1 else np.array([np.inf])
-    return dict(n=len(formation), coverage_mean=float(d.mean()), coverage_max=float(d.max()),
-                min_spacing=float(nn.min()), mean_spacing=float(nn.mean()))
+    return dict(
+        n=len(formation),
+        coverage_mean=float(d.mean()),
+        coverage_max=float(d.max()),
+        min_spacing=float(nn.min()),
+        mean_spacing=float(nn.mean()),
+    )
